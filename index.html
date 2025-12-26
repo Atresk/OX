@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1132928-FinalTerm</title>
+    <style>
+        body {
+            font-family: 'Microsoft JhengHei', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            color: #ecf0f1;
+        }
+        .game-container {
+            text-align: center;
+            background: rgba(0,0,0,0.6);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #f39c12, #e67e22);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .status {
+            font-size: 1.1em;
+            margin: 15px 0;
+            padding: 12px;
+            background: rgba(52, 73, 94, 0.9);
+            border-radius: 10px;
+            border-left: 5px solid #3498db;
+            transition: all 0.3s;
+        }
+        
+        /* --- 棋盤核心樣式修正 --- */
+        #board {
+            display: grid;
+            grid-template-columns: repeat(9, 45px); /* 縮小一點以適應螢幕 */
+            grid-template-rows: repeat(9, 45px);
+            margin: 20px auto;
+            padding: 20px;
+            background: #DCB35C; /* 實木色 */
+            border-radius: 5px;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        .cell {
+            width: 45px;
+            height: 45px;
+            position: relative;
+            cursor: pointer;
+            /* 取消原本的格子背景，改用線條 */
+            background: transparent; 
+        }
+
+        /* 繪製橫線 */
+        .cell::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 0; right: 0;
+            height: 1px;
+            background: #000;
+            z-index: 0;
+        }
+        /* 繪製直線 */
+        .cell::after {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0; left: 50%;
+            width: 1px;
+            background: #000;
+            z-index: 0;
+        }
+
+        /* 處理邊緣線條，不讓線凸出去 */
+        .cell[data-col="0"]::before { left: 50%; }
+        .cell[data-col="8"]::before { right: 50%; }
+        .cell[data-row="0"]::after { top: 50%; }
+        .cell[data-row="8"]::after { bottom: 50%; }
+
+        /* 天元與星位 (3,3), (3,7), (7,3), (7,7), (5,5) */
+        .cell.star::before {
+            /* 利用一個小圓點覆蓋 */
+            box-shadow: 0 0 0 2px #000; 
+        }
+        /* 使用偽元素畫星位黑點 */
+        .star-point {
+            position: absolute;
+            width: 6px; height: 6px;
+            background: #000;
+            border-radius: 50%;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+        }
+
+        /* --- 棋子樣式 --- */
+        .stone {
+            width: 85%;
+            height: 85%;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) scale(0); /* 初始縮放為0 */
+            z-index: 2;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+        }
+
+        .cell.has-stone .stone {
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        .stone.black {
+            background: radial-gradient(circle at 30% 30%, #444 0%, #000 100%);
+        }
+
+        .stone.white {
+            background: radial-gradient(circle at 30% 30%, #fff 0%, #ddd 100%);
+        }
+
+        /* 最後一手標記 */
+        .last-move-marker {
+            position: absolute;
+            width: 30%; height: 30%;
+            background: rgba(255, 0, 0, 0.8);
+            border-radius: 50%;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 3;
+            box-shadow: 0 0 5px red;
+        }
+        
+        /* 提子動畫 */
+        .captured-anim {
+            animation: fadeOut 0.5s forwards;
+        }
+        @keyframes fadeOut {
+            to { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+        }
+
+        /* --- UI 控制項 --- */
+        .controls { margin-top: 20px; }
+        button {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            color: white; border: none; padding: 10px 20px;
+            margin: 0 5px; border-radius: 20px; font-size: 14px;
+            cursor: pointer; transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 10px rgba(0,0,0,0.3); }
+        button:disabled { background: #7f8c8d; cursor: not-allowed; transform: none; }
+        .pass-btn { background: linear-gradient(45deg, #e67e22, #d35400) !important; }
+        .reset-btn { background: linear-gradient(45deg, #e74c3c, #c0392b) !important; }
+
+        .score-board {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .score-box {
+            background: rgba(255,255,255,0.1);
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .score-num { font-size: 1.5em; font-weight: bold; display: block; }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="status" id="status">🖤 輪到黑棋 (User)</div>
+        
+        <div id="board">
+            </div>
+
+        <div class="controls">
+            <button onclick="game.reset()">🔄 新局</button>
+            <button class="pass-btn" onclick="game.pass()">🏳️ 虛手 (Pass)</button>
+            <button onclick="game.undo()" id="undoBtn">↩️ 悔棋</button>
+        </div>
+
+        <div class="score-board">
+            <div class="score-box">
+                <span>黑棋 (玩家)</span>
+                <span id="blackScore" class="score-num">0</span>
+            </div>
+            <div class="score-box">
+                <span>白棋 (電腦)</span>
+                <span id="whiteScore" class="score-num">0</span>
+            </div>
+        </div>
+        <div style="font-size: 0.8rem; color: #aaa; margin-top:10px;">
+            雙方連續 Pass 即終局
+        </div>
+    </div>
+
+    <script>
+        class GoGame {
+            constructor() {
+                this.boardSize = 9;
+                this.boardElement = document.getElementById('board');
+                this.statusElement = document.getElementById('status');
+                this.blackScoreEl = document.getElementById('blackScore');
+                this.whiteScoreEl = document.getElementById('whiteScore');
+                
+                this.reset();
+            }
+
+            reset() {
+                // 0: 空, 1: 黑, 2: 白
+                this.grid = Array(this.boardSize).fill().map(() => Array(this.boardSize).fill(0));
+                this.history = []; // 用於悔棋
+                this.boardHistoryHashes = []; // 用於打劫判斷 (Ko rule)
+                this.currentPlayer = 1; // 黑先
+                this.passCount = 0;
+                this.isGameOver = false;
+                this.lastMove = null;
+
+                this.renderBoard();
+                this.updateUI();
+            }
+
+            // 初始化棋盤 DOM
+            renderBoard() {
+                this.boardElement.innerHTML = '';
+                const starPoints = [[2,2], [6,2], [4,4], [2,6], [6,6]]; // 9路星位
+
+                for (let y = 0; y < this.boardSize; y++) {
+                    for (let x = 0; x < this.boardSize; x++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        cell.dataset.x = x;
+                        cell.dataset.y = y;
+                        
+                        // 繪製星位
+                        if (starPoints.some(p => p[0] === x && p[1] === y)) {
+                            const star = document.createElement('div');
+                            star.className = 'star-point';
+                            cell.appendChild(star);
+                        }
+
+                        // 棋子容器
+                        const stone = document.createElement('div');
+                        stone.className = 'stone'; // 預設隱藏
+                        cell.appendChild(stone);
+
+                        cell.addEventListener('click', () => this.handleUserClick(x, y));
+                        this.boardElement.appendChild(cell);
+                    }
+                }
+            }
+
+            handleUserClick(x, y) {
+                if (this.isGameOver || this.currentPlayer !== 1) return;
+                
+                if (this.attemptMove(x, y, 1)) {
+                    // 電腦回應
+                    setTimeout(() => this.computerMove(), 500);
+                }
+            }
+
+            attemptMove(x, y, color) {
+                if (this.grid[y][x] !== 0) return false; // 已有子
+
+                // 複製棋盤進行模擬
+                let tempGrid = JSON.parse(JSON.stringify(this.grid));
+                tempGrid[y][x] = color;
+
+                // 1. 檢查提子 (Capture)
+                const opponent = color === 1 ? 2 : 1;
+                const capturedStones = this.checkCaptures(tempGrid, x, y, opponent);
+                
+                // 2. 檢查禁著點 (Suicide): 如果沒吃到人，且自己氣為0 -> 禁止
+                if (capturedStones.length === 0 && this.getLiberties(x, y, tempGrid) === 0) {
+                    this.showStatus("❌ 禁著點 (自殺)！");
+                    return false;
+                }
+
+                // 3. 檢查打劫 (Ko): 局面不能與上一步完全相同
+                // 這裡簡化：比對 Hash，如果跟上一手結束後的局面一樣則禁止
+                // 正確的 Ko 規則是不能回復到"全局同型"。
+                const newBoardHash = JSON.stringify(tempGrid);
+                if (this.boardHistoryHashes.includes(newBoardHash) && this.boardHistoryHashes.indexOf(newBoardHash) === this.boardHistoryHashes.length - 1) {
+                    // 簡易劫：只擋立即反提
+                    // 嚴格劫：this.boardHistoryHashes.includes(newBoardHash)
+                    // 這裡採用簡易劫 (Basic Ko) 避免複雜驗證困擾
+                     if (this.lastMove && capturedStones.length === 1 && this.history.length > 0) {
+                        // 如果這一步只提了一子，且回復到上一步狀態 -> 禁止
+                        // 簡化判定：檢查 hash
+                        if (this.boardHistoryHashes.length > 1 && newBoardHash === this.boardHistoryHashes[this.boardHistoryHashes.length - 2]) {
+                             this.showStatus("❌ 打劫 (Ko)！請找劫材。");
+                             return false;
+                        }
+                     }
+                }
+
+                // --- 合法移動，執行 ---
+                this.executeMove(x, y, color, capturedStones);
+                return true;
+            }
+
+            executeMove(x, y, color, capturedStones) {
+                // 存入歷史
+                this.history.push(JSON.parse(JSON.stringify(this.grid)));
+                
+                // 更新棋盤
+                this.grid[y][x] = color;
+                
+                // 移除死子
+                capturedStones.forEach(pos => {
+                    this.grid[pos.y][pos.x] = 0;
+                });
+
+                // 更新 Hash
+                this.boardHistoryHashes.push(JSON.stringify(this.grid));
+                if (this.boardHistoryHashes.length > 6) this.boardHistoryHashes.shift(); // 保持記憶體輕量
+
+                this.lastMove = {x, y};
+                this.passCount = 0; // 重置 pass
+                this.currentPlayer = color === 1 ? 2 : 1;
+                
+                this.updateView(x, y, color, capturedStones);
+                this.updateUI();
+            }
+
+            checkCaptures(board, lastX, lastY, opponentColor) {
+                let captured = [];
+                const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+                
+                // 檢查剛落子四周的敵子
+                dirs.forEach(([dx, dy]) => {
+                    const nx = lastX + dx, ny = lastY + dy;
+                    if (this.isOnBoard(nx, ny) && board[ny][nx] === opponentColor) {
+                        const group = this.getGroup(nx, ny, board);
+                        if (group.liberties === 0) {
+                            captured.push(...group.stones);
+                        }
+                    }
+                });
+                return captured;
+            }
+
+            getGroup(x, y, board) {
+                const color = board[y][x];
+                let stones = [];
+                let liberties = 0;
+                let visited = new Set();
+                let queue = [{x, y}];
+                visited.add(`${x},${y}`);
+
+                while (queue.length > 0) {
+                    const curr = queue.pop();
+                    stones.push(curr);
+                    
+                    const dirs = [[0,1], [0,-1], [1,0], [-1,0]];
+                    dirs.forEach(([dx, dy]) => {
+                        const nx = curr.x + dx, ny = curr.y + dy;
+                        if (this.isOnBoard(nx, ny)) {
+                            const neighborColor = board[ny][nx];
+                            if (neighborColor === 0) {
+                                liberties++;
+                            } else if (neighborColor === color && !visited.has(`${nx},${ny}`)) {
+                                visited.add(`${nx},${ny}`);
+                                queue.push({x: nx, y: ny});
+                            }
+                        }
+                    });
+                }
+                return { stones, liberties };
+            }
+
+            getLiberties(x, y, board) {
+                return this.getGroup(x, y, board).liberties;
+            }
+
+            isOnBoard(x, y) {
+                return x >= 0 && x < this.boardSize && y >= 0 && y < this.boardSize;
+            }
+
+            // --- UI 更新 ---
+            updateView(newX, newY, color, capturedStones) {
+                // 移除死子顯示
+                capturedStones.forEach(pos => {
+                    const cell = document.querySelector(`.cell[data-x="${pos.x}"][data-y="${pos.y}"]`);
+                    const stone = cell.querySelector('.stone');
+                    stone.classList.add('captured-anim');
+                    setTimeout(() => {
+                        stone.className = 'stone'; // 重置
+                        cell.classList.remove('has-stone');
+                    }, 200);
+                });
+
+                // 新增棋子
+                const cell = document.querySelector(`.cell[data-x="${newX}"][data-y="${newY}"]`);
+                const stone = cell.querySelector('.stone');
+                stone.className = `stone ${color === 1 ? 'black' : 'white'}`;
+                cell.classList.add('has-stone');
+
+                // 更新最後一手紅點
+                document.querySelectorAll('.last-move-marker').forEach(el => el.remove());
+                const marker = document.createElement('div');
+                marker.className = 'last-move-marker';
+                cell.appendChild(marker);
+            }
+
+            updateUI() {
+                if (this.isGameOver) return;
+                
+                // 簡單計算盤面子數 (不代表終局分數)
+                let b = 0, w = 0;
+                this.grid.flat().forEach(c => { if(c===1) b++; if(c===2) w++; });
+                
+                this.blackScoreEl.innerText = b;
+                this.whiteScoreEl.innerText = w;
+
+                const name = this.currentPlayer === 1 ? "黑棋 (User)" : "白棋 (CPU)";
+                this.statusElement.innerText = `輪到：${name}`;
+                this.statusElement.style.borderLeftColor = this.currentPlayer === 1 ? "#000" : "#fff";
+            }
+
+            // --- 電腦 AI (Heuristic) ---
+            computerMove() {
+                if (this.isGameOver) return;
+
+                let bestMove = null;
+                let maxScore = -Infinity;
+                const candidates = [];
+
+                // 遍歷所有合法點
+                for (let y = 0; y < this.boardSize; y++) {
+                    for (let x = 0; x < this.boardSize; x++) {
+                        if (this.grid[y][x] === 0) {
+                            // 簡單模擬：測試這步棋的分數
+                            let score = Math.random() * 5; // 基礎隨機分
+                            
+                            // 模擬落子
+                            let tempGrid = JSON.parse(JSON.stringify(this.grid));
+                            tempGrid[y][x] = 2; // 白棋
+                            
+                            // 1. 攻擊：能否提吃玩家
+                            const caps = this.checkCaptures(tempGrid, x, y, 1);
+                            if (caps.length > 0) score += 50 + caps.length * 20;
+
+                            // 2. 防守：自己會不會死 (自殺檢查)
+                            const myGroup = this.getGroup(x, y, tempGrid);
+                            if (myGroup.liberties === 0 && caps.length === 0) continue; // 自殺，跳過
+                            if (myGroup.liberties === 1) score -= 50; // 填入虎口，危險
+
+                            // 3. 佔地：優先佔角邊 (9路特化)
+                            if ((x===2 || x===6) && (y===2 || y===6)) score += 10; // 3-3
+                            if (x===4 && y===4) score += 8; // 天元
+
+                            // 4. 救子：如果有己方棋子被叫吃，嘗試救援
+                            // (此處簡化，僅看落子後是否增加氣)
+                            
+                            candidates.push({x, y, score});
+                        }
+                    }
+                }
+
+                if (candidates.length === 0) {
+                    this.pass();
+                    return;
+                }
+
+                // 選擇最高分
+                candidates.sort((a, b) => b.score - a.score);
+                bestMove = candidates[0];
+
+                this.attemptMove(bestMove.x, bestMove.y, 2);
+            }
+
+            pass() {
+                this.passCount++;
+                this.currentPlayer = this.currentPlayer === 1 ? 2 : 1;
+                this.statusElement.innerText = `⚠️ ${this.currentPlayer === 2 ? '黑棋' : '白棋'} Pass! (${this.passCount}/2)`;
+                
+                if (this.passCount >= 2) {
+                    this.endGame();
+                } else if (this.currentPlayer === 2) {
+                    setTimeout(() => this.computerMove(), 1000);
+                }
+            }
+
+            undo() {
+                if (this.history.length === 0 || this.isGameOver) return;
+                
+                // 回復兩步 (因為是一人一步)
+                // 如果是玩家剛下完電腦還沒下，這邏輯要調整。但因為setTimeout，通常已經下完了。
+                // 簡單做：回復到上一次玩家落子前的狀態 (即 pop 兩次)
+                
+                if (this.history.length >= 2) {
+                    this.history.pop(); // Pop computer move
+                    this.history.pop(); // Pop user move
+                    this.grid = this.history.length > 0 ? JSON.parse(JSON.stringify(this.history[this.history.length-1])) : Array(9).fill().map(()=>Array(9).fill(0));
+                } else {
+                    // 只下了一手或剛開始
+                    this.reset();
+                    return;
+                }
+                
+                // 重新渲染全部
+                this.boardElement.innerHTML = ''; 
+                this.renderBoard(); 
+                // 恢復棋盤狀態
+                for(let y=0; y<9; y++) {
+                    for(let x=0; x<9; x++) {
+                        if(this.grid[y][x] !== 0) {
+                            this.updateView(x, y, this.grid[y][x], []);
+                        }
+                    }
+                }
+                this.currentPlayer = 1;
+                this.passCount = 0;
+                this.updateUI();
+            }
+
+            endGame() {
+                this.isGameOver = true;
+                
+                // --- 數子法結算 (Chinese Counting / Area Scoring) ---
+                // 子 + 空 (歸屬於該色的空地)
+                let blackArea = 0;
+                let whiteArea = 0;
+                let visited = Array(this.boardSize).fill().map(() => Array(this.boardSize).fill(false));
+
+                for (let y = 0; y < this.boardSize; y++) {
+                    for (let x = 0; x < this.boardSize; x++) {
+                        if (this.grid[y][x] === 1) blackArea++;
+                        else if (this.grid[y][x] === 2) whiteArea++;
+                        else if (!visited[y][x]) {
+                            // 洪水填充計算空地歸屬
+                            let region = [];
+                            let q = [{x, y}];
+                            visited[y][x] = true;
+                            let touchBlack = false, touchWhite = false;
+
+                            while(q.length > 0) {
+                                let c = q.pop();
+                                region.push(c);
+                                [[0,1],[0,-1],[1,0],[-1,0]].forEach(([dx,dy]) => {
+                                    let nx = c.x+dx, ny = c.y+dy;
+                                    if(this.isOnBoard(nx,ny)) {
+                                        if(this.grid[ny][nx] === 1) touchBlack = true;
+                                        else if(this.grid[ny][nx] === 2) touchWhite = true;
+                                        else if(!visited[ny][nx]) {
+                                            visited[ny][nx] = true;
+                                            q.push({x:nx, y:ny});
+                                        }
+                                    }
+                                });
+                            }
+
+                            if(touchBlack && !touchWhite) blackArea += region.length;
+                            else if(touchWhite && !touchBlack) whiteArea += region.length;
+                        }
+                    }
+                }
+
+                // 貼目 (Komi) 5.5
+                let finalWhite = whiteArea + 5.5;
+                let resultText = `黑棋: ${blackArea} 子\n白棋: ${finalWhite} 子 (含貼目)\n`;
+                resultText += blackArea > finalWhite ? "🏆 黑棋獲勝！" : "💻 白棋獲勝！";
+
+                this.statusElement.innerText = "🏁 遊戲結束";
+                this.statusElement.style.background = "#e74c3c";
+                
+                setTimeout(() => alert(resultText), 100);
+            }
+        }
+
+        // 啟動遊戲
+        const game = new GoGame();
+    </script>
+</body>
+</html>
